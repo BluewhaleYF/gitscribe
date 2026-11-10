@@ -343,22 +343,41 @@ class LocalMessageGenerator {
     return '${_gitmoji(extractType(message))} ${message.trimLeft()}';
   }
 
+  /// Splits [message] into `(leadingEmoji, rest)`, where `rest` is trimmed.
+  static (String, String) _splitLeadingGitmoji(String message) {
+    final t = message.trimLeft();
+    for (final e in _gitmojiEmojis) {
+      if (t.startsWith(e)) {
+        return (t.substring(0, e.length), t.substring(e.length).trimLeft());
+      }
+    }
+    return ('', t);
+  }
+
   /// Extracts the Conventional Commits type token (`feat`, `fix`, …) from the
-  /// subject, or `null` when there is no prefix.
+  /// subject (skipping any leading gitmoji), or `null` when there is no prefix.
   static String? extractType(String message) {
-    final m = RegExp(r'^\s*(\w+)(?:\([^)]*\))?!?:').firstMatch(message);
+    final (_, rest) = _splitLeadingGitmoji(message);
+    final m = RegExp(r'^(\w+)(?:\([^)]*\))?!?:').firstMatch(rest);
     return m?.group(1);
   }
 
-  /// Removes the conventional `type(scope)!:` prefix.
+  /// Removes the conventional `type(scope)!:` prefix, keeping any leading
+  /// gitmoji in place.
   static String removeConventionalPrefix(String message) {
-    return message.replaceFirst(_conventionalPrefix, '');
+    final (emoji, rest) = _splitLeadingGitmoji(message);
+    final stripped = rest.replaceFirst(_conventionalPrefix, '');
+    if (emoji.isEmpty) return stripped;
+    return stripped.isEmpty ? emoji : '$emoji $stripped';
   }
 
-  /// Prepends `type: ` when there is no conventional prefix yet.
+  /// Prepends `type: ` (after any leading gitmoji) when there is no
+  /// conventional prefix yet.
   static String addConventionalPrefix(String message, String type) {
     if (extractType(message) != null) return message;
-    return '$type: ${message.trimLeft()}';
+    final (emoji, rest) = _splitLeadingGitmoji(message);
+    final withPrefix = '$type: $rest';
+    return emoji.isEmpty ? withPrefix : '$emoji $withPrefix';
   }
 
   /// Infers a Conventional Commits type from a set of file paths.

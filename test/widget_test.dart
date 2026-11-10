@@ -145,6 +145,22 @@ void main() {
     expect(LocalMessageGenerator.inferTypeFromPaths(['test/a_test.dart']), 'test');
   });
 
+  test('gitmoji and conventional prefix coexist', () {
+    // Add conventional after gitmoji keeps the emoji first.
+    expect(
+      LocalMessageGenerator.addConventionalPrefix('🔧 add x', 'feat'),
+      '🔧 feat: add x',
+    );
+    // Type is detected through the leading emoji.
+    expect(LocalMessageGenerator.extractType('🔧 feat: add x'), 'feat');
+    expect(LocalMessageGenerator.hasGitmoji('🔧 feat: add x'), isTrue);
+    // Removing conventional keeps the emoji.
+    expect(
+      LocalMessageGenerator.removeConventionalPrefix('🔧 feat: add x'),
+      '🔧 add x',
+    );
+  });
+
   test('humanize converts identifiers into words', () {
     expect(LocalMessageGenerator.humanize('login_form'), 'login form');
     expect(LocalMessageGenerator.humanize('LoginForm'), 'login form');
