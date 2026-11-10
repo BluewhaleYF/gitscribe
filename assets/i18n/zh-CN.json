@@ -97,5 +97,9 @@
   "gitmoji": "gitmoji",
   "conventional": "规范",
   "enabled": "启用",
-  "commitFailedAtIndex": "第 {index} 条提交失败。"
+  "commitFailedAtIndex": "第 {index} 条提交失败。",
+  "adjust": "调整",
+  "format": "格式",
+  "smartPolish": "智能润色",
+  "newFile": "新文件"
 }

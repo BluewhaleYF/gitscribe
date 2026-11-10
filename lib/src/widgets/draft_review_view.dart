@@ -8,8 +8,9 @@ import '../i18n.dart';
 import '../message_generator.dart';
 import '../prompts.dart';
 
-/// The review (fine-tune) view shown at `FlowStage.reviewing`. Renders one
-/// card per [DraftEntry] with an editable message and quick-rewrite buttons.
+/// The review (fine-tune) view shown at `FlowStage.reviewing`. Each
+/// [DraftEntry] is a left/right split card: message + files on the left, and a
+/// "调整" panel (format toggles + smart polish) on the right.
 class DraftReviewView extends StatefulWidget {
   const DraftReviewView({
     super.key,
@@ -45,7 +46,8 @@ class _DraftReviewViewState extends State<DraftReviewView> {
   );
 
   final Map<String, TextEditingController> _controllers = {};
-  String? _busyId;
+  Map<String, (int, int)> _numstat = const {};
+  String? _busyKey; // '<entryId>:simplify' or '<entryId>:elaborate'
 
   @override
   void initState() {
@@ -53,6 +55,13 @@ class _DraftReviewViewState extends State<DraftReviewView> {
     for (final entry in widget.session.entries) {
       _controllers[entry.id] = TextEditingController(text: entry.message);
     }
+    _loadNumstat();
+  }
+
+  Future<void> _loadNumstat() async {
+    final map = await widget.git.diffNumstat(widget.repoPath);
+    if (!mounted) return;
+    setState(() => _numstat = map);
   }
 
   @override
@@ -85,7 +94,7 @@ class _DraftReviewViewState extends State<DraftReviewView> {
       _showSnack(_s('needApiKey'));
       return;
     }
-    setState(() => _busyId = entry.id);
+    setState(() => _busyKey = '${entry.id}:simplify');
     try {
       final message = await widget.ai.rewrite(
         config: widget.aiConfig,
@@ -102,7 +111,7 @@ class _DraftReviewViewState extends State<DraftReviewView> {
       if (!mounted) return;
       _showSnack(_s('aiDraftFailed', {'error': '$e'}));
     } finally {
-      if (mounted) setState(() => _busyId = null);
+      if (mounted) setState(() => _busyKey = null);
     }
   }
 
@@ -111,7 +120,7 @@ class _DraftReviewViewState extends State<DraftReviewView> {
       _showSnack(_s('needApiKey'));
       return;
     }
-    setState(() => _busyId = entry.id);
+    setState(() => _busyKey = '${entry.id}:elaborate');
     try {
       final diff = await widget.git.diffForPaths(widget.repoPath, entry.files);
       final message = await widget.ai.rewrite(
@@ -130,7 +139,7 @@ class _DraftReviewViewState extends State<DraftReviewView> {
       if (!mounted) return;
       _showSnack(_s('aiDraftFailed', {'error': '$e'}));
     } finally {
-      if (mounted) setState(() => _busyId = null);
+      if (mounted) setState(() => _busyKey = null);
     }
   }
 
@@ -149,6 +158,95 @@ class _DraftReviewViewState extends State<DraftReviewView> {
             LocalMessageGenerator.inferTypeFromPaths(entry.files),
           );
     _setMessage(entry, message);
+  }
+
+  Widget _statTrailing(I18nController i18n, ColorScheme scheme, String file) {
+    final stat = _numstat[file];
+    if (stat == null) {
+      return Text(
+        i18n.t('newFile'),
+        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+      );
+    }
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '+${stat.$1}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF16A34A),
+            ),
+          ),
+          TextSpan(
+            text: ' -${stat.$2}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFDC2626),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showFileDiff(String file) async {
+    final diff = await widget.git.diffForPath(widget.repoPath, file);
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.insert_drive_file_outlined,
+                          size: 18, color: scheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          file,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Menlo',
+                            fontFamilyFallback: ['Monaco', 'Courier New'],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: diff.isEmpty
+                      ? Center(
+                          child: Text(
+                            I18nController.instance.t('noTextualDiff'),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(12),
+                          child: SelectableText(diff, style: _mono),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -194,12 +292,8 @@ class _DraftReviewViewState extends State<DraftReviewView> {
     I18nController i18n,
     DraftEntry entry,
   ) {
-    final busy = _busyId == entry.id;
     final multi = widget.session.mode != CommitMode.single;
-    final hasGitmoji = LocalMessageGenerator.hasGitmoji(entry.message);
-    final hasConventional =
-        LocalMessageGenerator.extractType(entry.message) != null;
-
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -209,81 +303,235 @@ class _DraftReviewViewState extends State<DraftReviewView> {
           children: [
             Row(
               children: [
-                if (multi)
-                  Tooltip(
-                    message: i18n.t('enabled'),
-                    child: Checkbox(
-                      value: entry.enabled,
-                      onChanged: (v) => setState(() => entry.enabled = v ?? true),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                Expanded(
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      for (final file in entry.files)
-                        Chip(
-                          label: Text(p.basename(file)),
-                          labelStyle: const TextStyle(fontSize: 12),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                    ],
-                  ),
+                Icon(Icons.commit, size: 22, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  i18n.t('commitMessageTitle'),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _controllers[entry.id],
-              minLines: 2,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              style: _mono,
-              onChanged: (value) => entry.message = value,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ActionChip(
-                  avatar: busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.short_text, size: 18),
-                  label: Text(i18n.t('simplify')),
-                  onPressed: busy ? null : () => _simplify(entry),
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.subject, size: 18),
-                  label: Text(i18n.t('elaborate')),
-                  onPressed: busy ? null : () => _elaborate(entry),
-                ),
-                FilterChip(
-                  label: Text(i18n.t('gitmoji')),
-                  selected: hasGitmoji,
-                  onSelected: (_) => _toggleGitmoji(entry),
-                ),
-                FilterChip(
-                  label: Text(i18n.t('conventional')),
-                  selected: hasConventional,
-                  onSelected: (_) => _toggleConventional(entry),
-                ),
+                Expanded(child: _buildLeft(context, i18n, entry, multi)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildAdjustPanel(context, i18n, entry)),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLeft(
+    BuildContext context,
+    I18nController i18n,
+    DraftEntry entry,
+    bool multi,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (multi)
+          Row(
+            children: [
+              Checkbox(
+                value: entry.enabled,
+                onChanged: (v) => setState(() => entry.enabled = v ?? true),
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                i18n.t('enabled'),
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+            ],
+          ),
+        TextField(
+          controller: _controllers[entry.id],
+          minLines: 3,
+          maxLines: null,
+          keyboardType: TextInputType.multiline,
+          style: _mono,
+          onChanged: (value) => entry.message = value,
+          decoration: const InputDecoration(
+            isDense: true,
+            filled: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ExpansionTile(
+            dense: true,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            leading: Icon(
+              Icons.folder_outlined,
+              size: 18,
+              color: scheme.onSurfaceVariant,
+            ),
+            title: Text(
+              i18n.t('groupFiles', {'count': '${entry.files.length}'}),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            children: [
+              for (final file in entry.files)
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.insert_drive_file_outlined,
+                    size: 16,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    p.basename(file),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    file,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: _statTrailing(i18n, scheme, file),
+                  onTap: () => _showFileDiff(file),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdjustPanel(
+    BuildContext context,
+    I18nController i18n,
+    DraftEntry entry,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final simplifyBusy = _busyKey == '${entry.id}:simplify';
+    final elaborateBusy = _busyKey == '${entry.id}:elaborate';
+    final busy = simplifyBusy || elaborateBusy;
+    final hasGitmoji = LocalMessageGenerator.hasGitmoji(entry.message);
+    final hasConventional =
+        LocalMessageGenerator.extractType(entry.message) != null;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.tune, size: 22, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                i18n.t('adjust'),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            i18n.t('format'),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.emoji_emotions, size: 20),
+            title: Text(i18n.t('gitmoji')),
+            value: hasGitmoji,
+            onChanged: (_) => _toggleGitmoji(entry),
+          ),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.rule, size: 20),
+            title: Text(i18n.t('conventional')),
+            value: hasConventional,
+            onChanged: (_) => _toggleConventional(entry),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            i18n.t('smartPolish'),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 6),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.short_text, size: 20),
+            title: Text(i18n.t('simplify')),
+            trailing: simplifyBusy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right, size: 20),
+            onTap: busy ? null : () => _simplify(entry),
+          ),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.subject, size: 20),
+            title: Text(i18n.t('elaborate')),
+            trailing: elaborateBusy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right, size: 20),
+            onTap: busy ? null : () => _elaborate(entry),
+          ),
+        ],
       ),
     );
   }

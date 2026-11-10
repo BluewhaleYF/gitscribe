@@ -97,5 +97,9 @@
   "gitmoji": "gitmoji",
   "conventional": "Conventional",
   "enabled": "Enabled",
-  "commitFailedAtIndex": "Commit #{index} failed."
+  "commitFailedAtIndex": "Commit #{index} failed.",
+  "adjust": "Adjust",
+  "format": "Format",
+  "smartPolish": "Smart polish",
+  "newFile": "new"
 }
