@@ -190,6 +190,44 @@ class GitService {
     return (r.stdout as String).trimRight();
   }
 
+  /// Per-file added/deleted line counts from `git diff HEAD --numstat` (or the
+  /// index when there are no commits). Untracked and binary files are absent.
+  Future<Map<String, (int, int)>> diffNumstat(String repoPath) async {
+    final has = await hasCommits(repoPath);
+    final r = await _run(
+      repoPath,
+      has ? ['diff', 'HEAD', '--numstat'] : ['diff', '--cached', '--numstat'],
+    );
+    if (r.exitCode != 0) return const {};
+    final map = <String, (int, int)>{};
+    for (final line in (r.stdout as String).split('\n')) {
+      final parts = line.split('\t');
+      if (parts.length < 3) continue;
+      final added = int.tryParse(parts[0]);
+      final deleted = int.tryParse(parts[1]);
+      if (added == null || deleted == null) continue;
+      map[parts[2]] = (added, deleted);
+    }
+    return map;
+  }
+
+  /// Diff for a single file; falls back to an untracked-file diff (whole file
+  /// as additions) when the path is not tracked yet.
+  Future<String> diffForPath(String repoPath, String path) async {
+    final has = await hasCommits(repoPath);
+    final r = await _run(
+      repoPath,
+      has ? ['diff', 'HEAD', '--', path] : ['diff', '--cached', '--', path],
+    );
+    final diff = (r.stdout as String).trim();
+    if (diff.isNotEmpty) return diff;
+    final u = await _run(
+      repoPath,
+      ['diff', '--no-index', '--', '/dev/null', path],
+    );
+    return (u.stdout as String).trim();
+  }
+
   Future<GitIdentity?> identity(String repoPath) async {
     final nameR = await _run(repoPath, ['config', 'user.name']);
     final emailR = await _run(repoPath, ['config', 'user.email']);
