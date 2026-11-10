@@ -13,6 +13,7 @@ import 'message_generator.dart';
 import 'models.dart';
 import 'settings_dialog.dart';
 import 'widgets/change_status_badge.dart';
+import 'widgets/commit_done_view.dart';
 import 'widgets/draft_review_view.dart';
 import 'widgets/manual_split_view.dart';
 import 'widgets/mode_picker.dart';
@@ -48,6 +49,7 @@ class _HomePageState extends State<HomePage> {
   FlowStage _stage = FlowStage.noRepo;
   DraftSession? _session;
   int _nextDraftId = 0;
+  int _lastCommitCount = 0;
 
   @override
   void initState() {
@@ -292,12 +294,10 @@ class _HomePageState extends State<HomePage> {
       _session = null;
       await _refresh();
       if (!mounted) return;
-      setState(() => _stage = FlowStage.repoLoaded);
-      _showSnack(
-        session.mode == CommitMode.single
-            ? _s('committedSuccessfully')
-            : _s('committedSplit', {'count': '$count'}),
-      );
+      setState(() {
+        _lastCommitCount = count;
+        _stage = FlowStage.committed;
+      });
     } on CommitFailedException catch (e) {
       if (!mounted) return;
       setState(() => _stage = FlowStage.reviewing);
@@ -436,6 +436,16 @@ class _HomePageState extends State<HomePage> {
           style: _commitStyle(),
           onBack: () => setState(() => _stage = FlowStage.repoLoaded),
           onDone: _onManualDone,
+        );
+      case FlowStage.committed:
+        final rp = _repoPath;
+        if (rp == null) return _buildOptionPage(context);
+        return CommitDoneView(
+          repoPath: rp,
+          git: _git,
+          currentBranch: _repoInfo?.branch ?? '',
+          commitCount: _lastCommitCount,
+          onDone: () => setState(() => _stage = FlowStage.repoLoaded),
         );
     }
   }

@@ -10,6 +10,7 @@ enum FlowStage {
   generating,
   reviewing,
   submitting,
+  committed,
 }
 
 /// How a working tree is turned into commits.

@@ -101,5 +101,15 @@
   "adjust": "Adjust",
   "format": "Format",
   "smartPolish": "Smart polish",
-  "newFile": "new"
+  "newFile": "new",
+  "commitDoneTitle": "Commit complete",
+  "committedCount": "{count} commits created",
+  "pushToRemote": "Push to remote",
+  "branch": "Branch",
+  "push": "Push",
+  "done": "Done",
+  "pushSuccess": "Pushed successfully.",
+  "pushFailed": "Push failed.",
+  "branchRequired": "Enter a branch name first.",
+  "noRemote": "No remote repository configured."
 }

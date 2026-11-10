@@ -101,5 +101,15 @@
   "adjust": "调整",
   "format": "格式",
   "smartPolish": "智能润色",
-  "newFile": "新文件"
+  "newFile": "新文件",
+  "commitDoneTitle": "提交完成",
+  "committedCount": "已创建 {count} 个提交",
+  "pushToRemote": "推送到远程",
+  "branch": "分支",
+  "push": "推送",
+  "done": "完成",
+  "pushSuccess": "推送成功。",
+  "pushFailed": "推送失败。",
+  "branchRequired": "请先输入分支名。",
+  "noRemote": "没有配置远程仓库。"
 }

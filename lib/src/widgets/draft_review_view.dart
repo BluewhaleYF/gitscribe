@@ -375,11 +375,11 @@ class _DraftReviewViewState extends State<DraftReviewView> {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        Material(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.outlineVariant),
+            side: BorderSide(color: scheme.outlineVariant),
           ),
           clipBehavior: Clip.antiAlias,
           child: ExpansionTile(
@@ -446,16 +446,18 @@ class _DraftReviewViewState extends State<DraftReviewView> {
     final hasConventional =
         LocalMessageGenerator.extractType(entry.message) != null;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+    return Material(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
+        side: BorderSide(color: scheme.outlineVariant),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Row(
             children: [
               Icon(Icons.tune, size: 22, color: scheme.primary),
@@ -531,7 +533,8 @@ class _DraftReviewViewState extends State<DraftReviewView> {
                 : const Icon(Icons.chevron_right, size: 20),
             onTap: busy ? null : () => _elaborate(entry),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

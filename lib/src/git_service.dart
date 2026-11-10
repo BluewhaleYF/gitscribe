@@ -228,6 +228,45 @@ class GitService {
     return (u.stdout as String).trim();
   }
 
+  /// Configured remotes (e.g. `origin`).
+  Future<List<String>> remotes(String repoPath) async {
+    final r = await _run(repoPath, ['remote']);
+    if (r.exitCode != 0) return const [];
+    return (r.stdout as String)
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+  }
+
+  /// Remote branch names under [remote] (without the `remote/` prefix).
+  Future<List<String>> remoteBranches(String repoPath, String remote) async {
+    final r = await _run(repoPath, ['branch', '-r', '--list', '$remote/*']);
+    if (r.exitCode != 0) return const [];
+    final prefix = '$remote/';
+    final branches = <String>[];
+    for (final line in (r.stdout as String).split('\n')) {
+      final name = line.trim();
+      if (name.isEmpty || name.contains('->')) continue;
+      branches.add(name.startsWith(prefix) ? name.substring(prefix.length) : name);
+    }
+    return branches;
+  }
+
+  /// Pushes the current HEAD to `remote/<branch>`.
+  Future<CommitResult> push(
+    String repoPath, {
+    required String remote,
+    required String branch,
+  }) async {
+    final r = await _run(repoPath, ['push', remote, 'HEAD:$branch']);
+    return CommitResult(
+      exitCode: r.exitCode,
+      stdout: (r.stdout as String),
+      stderr: (r.stderr as String),
+    );
+  }
+
   Future<GitIdentity?> identity(String repoPath) async {
     final nameR = await _run(repoPath, ['config', 'user.name']);
     final emailR = await _run(repoPath, ['config', 'user.email']);
