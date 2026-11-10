@@ -28,17 +28,3 @@ changes, and let GitScribe write the commit.
 flutter pub get
 flutter run -d macos
 ```
-
-## Project layout
-
-```
-lib/
-  main.dart                 # app entry point and theme
-  src/
-    models.dart             # ChangeType, FileChange, RepoInfo
-    git_service.dart        # git CLI wrapper (status/diff/commit)
-    message_generator.dart  # offline Conventional Commits drafter
-    ai_service.dart         # OpenAI-compatible client
-    app_config.dart         # persisted settings (last repo, AI provider)
-    home_page.dart          # main UI
-```
